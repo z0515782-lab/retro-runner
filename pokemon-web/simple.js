@@ -18,19 +18,6 @@ const ENABLE_SWITCH_PALETTES = true;
 const OSGP_DEADZONE = 0.1;    // On screen gamepad deadzone range
 const CGB_COLOR_CURVE = 2;    // 0: none, 1: Sameboy "Emulate Hardware" 2: Gambatte/Gameboy Online
 
-// Kindle safety: mock AudioContext if unsupported
-if (!window.AudioContext && !window.webkitAudioContext) {
-  window.AudioContext = function() {
-    return {
-      destination: {},
-      createBufferSource: function() {
-        return { connect: function() {}, start: function() {} };
-      },
-      createBuffer: function() { return {}; },
-      close: function() {}
-    };
-  };
-}
 
 
 // List of DMG palettes to switch between. By default it includes all 84
