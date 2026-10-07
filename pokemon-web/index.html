@@ -4,13 +4,19 @@ https://github.com/chrismaltby/gb-studio/blob/v2beta/appData/js-emulator/index.h
 (see LICENSE.gbstudio)
 -->
 <head>
-  <div id="kindle-debug" style="position:fixed; top:0; left:0; width:100%; color:#000; background:#fff; font-size:24px; font-weight:bold; z-index:999999; padding:15px; border-bottom:4px solid #000;">Loading...</div>
+  <div id="kindle-debug" style="position:fixed; top:0; left:0; width:100%; color:#000; background:#fff; font-size:22px; font-weight:bold; z-index:999999; padding:15px; border-bottom:4px solid #000;">
+    Testing Kindle capabilities...
+  </div>
   <script>
-    window.addEventListener('error', function(e) {
-      document.getElementById('kindle-debug').innerText = 'ERROR: ' + e.message + ' (line ' + e.lineno + ')';
+    window.addEventListener('DOMContentLoaded', function() {
+      const dbg = document.getElementById('kindle-debug');
+      const hasWasm = typeof window.WebAssembly !== 'undefined';
+      const hasBinjgb = typeof window.Binjgb !== 'undefined';
+      
+      dbg.innerText = "WASM Support: " + (hasWasm ? "YES" : "NO") + " | Binjgb script: " + (hasBinjgb ? "LOADED" : "FAILED/MISSING");
     });
-    window.addEventListener('unhandledrejection', function(e) {
-      document.getElementById('kindle-debug').innerText = 'PROMISE ERROR: ' + (e.reason ? (e.reason.message || e.reason) : 'unknown');
+    window.addEventListener('error', function(e) {
+      document.getElementById('kindle-debug').innerText += " | ERR: " + e.message;
     });
   </script>
   <meta charset="utf-8" />
