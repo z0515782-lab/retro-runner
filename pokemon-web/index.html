@@ -157,17 +157,17 @@
   </div>
 
   <script>
-    // 1. Define settings (Sound completely off for Kindle performance)
+    // 1. Settings (Sound OFF for Kindle performance)
     var settings = [false, true, false, true, true, false, false, false, false, false, false, false, false, false, false];
     window.settings = settings;
 
-    // 2. Mock legacy variables so it never crashes
+    // 2. Mock legacy console logger
     function cout(m) {}
     cout.value = "";
     cout.appendText = function() {};
     window.cout = cout;
 
-    // 3. Completely bypass Audio so Kindle browser never crashes
+    // 3. Audio dummy mock
     window.XAudioServer = function() {
       return {
         writeAudio: function() {},
@@ -175,9 +175,15 @@
         executeCallback: function() {}
       };
     };
+
+    // 4. FIX: Define initNewCanvas before GameBoyCore looks for it
+    window.initNewCanvas = function() {
+      var c = document.getElementById("mainCanvas");
+      return c;
+    };
   </script>
 
-  <!-- Load pure JavaScript emulator directly from CDN -->
+  <!-- GameBoy Online scripts -->
   <script src="https://cdn.jsdelivr.net/gh/taisel/GameBoy-Online/js/other/resampler.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/taisel/GameBoy-Online/js/GameBoyCore.js"></script>
 
@@ -186,7 +192,6 @@
     const canvas = document.getElementById("mainCanvas");
     let gb = null;
 
-    // Fetch Yellow ROM and boot directly in pure JavaScript
     fetch("pokemon_yellow.gbc")
       .then(resp => {
         if (!resp.ok) throw new Error("Could not find pokemon_yellow.gbc");
@@ -202,7 +207,7 @@
 
         statusText.innerText = "Starting Game...";
         
-        // Launch Pure JavaScript GameBoy instance
+        // Pass canvas and binary data
         gb = new GameBoyCore(canvas, bin);
         gb.soundMasterEnabled = false;
         gb.start();
@@ -213,8 +218,7 @@
         statusText.innerText = "Error: " + err.message;
       });
 
-    // Touch Event Hookups for Kindle Scribe
-    // GameBoyCore Joypad mapping:
+    // Touch mapping:
     // 0: Right, 1: Left, 2: Up, 3: Down, 4: A, 5: B, 6: Select, 7: Start
     function bindTouch(id, keyIndex) {
       const el = document.getElementById(id);
