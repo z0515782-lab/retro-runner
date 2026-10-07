@@ -1,46 +1,241 @@
 <!DOCTYPE html>
-<!-- copied from
-https://github.com/chrismaltby/gb-studio/blob/v2beta/appData/js-emulator/index.html
-(see LICENSE.gbstudio)
--->
+<html lang="en">
 <head>
-  <div id="kindle-debug" style="position:fixed; top:0; left:0; width:100%; color:#000; background:#fff; font-size:22px; font-weight:bold; z-index:999999; padding:15px; border-bottom:4px solid #000;">
-    Testing Kindle capabilities...
-  </div>
-  <script>
-    window.addEventListener('DOMContentLoaded', function() {
-      const dbg = document.getElementById('kindle-debug');
-      const hasWasm = typeof window.WebAssembly !== 'undefined';
-      const hasBinjgb = typeof window.Binjgb !== 'undefined';
-      
-      dbg.innerText = "WASM Support: " + (hasWasm ? "YES" : "NO") + " | Binjgb script: " + (hasBinjgb ? "LOADED" : "FAILED/MISSING");
-    });
-    window.addEventListener('error', function(e) {
-      document.getElementById('kindle-debug').innerText += " | ERR: " + e.message;
-    });
-  </script>
-  <meta charset="utf-8" />
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="simple.css">
-  <title>binjgb (simple)</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Pokémon Yellow - Kindle Edition</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    html, body {
+      background: #fff;
+      color: #000;
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    #status {
+      font-size: 16px;
+      font-weight: bold;
+      padding: 4px;
+      text-align: center;
+    }
+
+    /* Game Boy Screen optimized for Kindle E-ink */
+    canvas#mainCanvas {
+      image-rendering: -webkit-optimize-contrast;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      width: 320px;
+      height: 288px;
+      border: 3px solid #000;
+      background: #fff;
+      display: block;
+      margin: 0 auto;
+    }
+
+    /* Kindle Touch Controller */
+    #touch-controls {
+      width: 100%;
+      max-width: 600px;
+      height: 260px;
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 20px 20px 20px;
+    }
+
+    /* D-PAD */
+    .dpad {
+      position: relative;
+      width: 180px;
+      height: 180px;
+    }
+    .dpad-btn {
+      position: absolute;
+      width: 55px;
+      height: 55px;
+      background: #fff;
+      border: 3px solid #000;
+      font-size: 26px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .dpad-btn:active { background: #000; color: #fff; }
+    #btn-up    { top: 0; left: 60px; }
+    #btn-down  { bottom: 0; left: 60px; }
+    #btn-left  { top: 60px; left: 0; }
+    #btn-right { top: 60px; right: 0; }
+
+    /* ACTION BUTTONS (A, B) */
+    .action-group {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      width: 180px;
+    }
+    .ab-btns {
+      display: flex;
+      gap: 20px;
+      margin-top: 20px;
+    }
+    .round-btn {
+      width: 70px;
+      height: 70px;
+      border-radius: 50%;
+      background: #fff;
+      border: 3px solid #000;
+      font-size: 26px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .round-btn:active { background: #000; color: #fff; }
+
+    /* START / SELECT */
+    .menu-btns {
+      display: flex;
+      gap: 15px;
+      margin-bottom: 10px;
+    }
+    .pill-btn {
+      width: 80px;
+      height: 38px;
+      background: #fff;
+      border: 3px solid #000;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .pill-btn:active { background: #000; color: #fff; }
+  </style>
 </head>
 <body>
-  <div id="game">
-    <canvas id="mainCanvas" width="160" height="144">No Canvas Support</canvas>
-  </div>
-  <div id="controller">
-    <div id="controller_dpad">
-      <div id="controller_left"></div>
-      <div id="controller_right"></div>
-      <div id="controller_up"></div>
-      <div id="controller_down"></div>
+
+  <div id="status">Loading Pure-JS Core...</div>
+
+  <canvas id="mainCanvas" width="160" height="144"></canvas>
+
+  <div id="touch-controls">
+    <!-- D-PAD -->
+    <div class="dpad">
+      <div class="dpad-btn" id="btn-up">▲</div>
+      <div class="dpad-btn" id="btn-left">◀</div>
+      <div class="dpad-btn" id="btn-right">▶</div>
+      <div class="dpad-btn" id="btn-down">▼</div>
     </div>
-    <div id="controller_select" class="capsuleBtn">Select</div>
-    <div id="controller_start" class="capsuleBtn">Start</div>
-    <div id="controller_b" class="roundBtn">B</div>
-    <div id="controller_a" class="roundBtn">A</div>
+
+    <!-- START / SELECT + A / B -->
+    <div class="action-group">
+      <div class="ab-btns">
+        <div class="round-btn" id="btn-b">B</div>
+        <div class="round-btn" id="btn-a">A</div>
+      </div>
+      <div class="menu-btns">
+        <div class="pill-btn" id="btn-select">SELECT</div>
+        <div class="pill-btn" id="btn-start">START</div>
+      </div>
+    </div>
   </div>
-  <script src="binjgb.js"></script>
-  <script src="simple.js"></script>
+
+  <!-- Legacy mock so it never throws -->
+  <script>
+    function cout(m) {}
+    cout.value = "";
+    cout.appendText = function() {};
+    window.cout = cout;
+
+    // Completely disable Audio for Kindle
+    window.settings = [false, true, false, true, true, true, false, false, false, false, false, false, false, false, false];
+    window.windowSettings = window.settings;
+  </script>
+
+  <!-- Load Pure JavaScript Game Boy Engine -->
+  <script src="core/js/other/resampler.js"></script>
+  <script src="core/js/other/XAudioServer.js"></script>
+  <script src="core/js/GameBoyCore.js"></script>
+  <script src="core/js/GameBoyIO.js"></script>
+
+  <script>
+    const statusText = document.getElementById("status");
+    const canvas = document.getElementById("mainCanvas");
+
+    // Fetch and boot Yellow
+    fetch("pokemon_yellow.gbc")
+      .then(resp => {
+        if (!resp.ok) throw new Error("ROM not found!");
+        statusText.innerText = "Extracting ROM...";
+        return resp.arrayBuffer();
+      })
+      .then(buf => {
+        let bin = "";
+        let bytes = new Uint8Array(buf);
+        for (let i = 0; i < bytes.byteLength; i++) {
+          bin += String.fromCharCode(bytes[i]);
+        }
+
+        statusText.innerText = "Booting Pokémon Yellow...";
+        start(canvas, bin);
+
+        // Turn off sound completely to save Kindle CPU
+        if (window.gameboy) {
+          window.gameboy.soundMasterEnabled = false;
+        }
+
+        statusText.style.display = "none";
+      })
+      .catch(err => {
+        statusText.innerText = "Error: " + err.message;
+      });
+
+    // Touch Event Hookups for Kindle Scribe
+    function bindTouch(id, keyIndex) {
+      const el = document.getElementById(id);
+      if (!el) return;
+
+      const press = (e) => {
+        e.preventDefault();
+        if (window.GameBoyKeyDown) window.GameBoyKeyDown(keyIndex);
+      };
+      const release = (e) => {
+        e.preventDefault();
+        if (window.GameBoyKeyUp) window.GameBoyKeyUp(keyIndex);
+      };
+
+      el.addEventListener("touchstart", press, {passive: false});
+      el.addEventListener("touchend", release, {passive: false});
+      el.addEventListener("mousedown", press);
+      el.addEventListener("mouseup", release);
+    }
+
+    // Key mappings in GameBoyIO:
+    // 0: Right, 1: Left, 2: Up, 3: Down, 4: A, 5: B, 6: Select, 7: Start
+    bindTouch("btn-right", 0);
+    bindTouch("btn-left", 1);
+    bindTouch("btn-up", 2);
+    bindTouch("btn-down", 3);
+    bindTouch("btn-a", 4);
+    bindTouch("btn-b", 5);
+    bindTouch("btn-select", 6);
+    bindTouch("btn-start", 7);
+  </script>
 </body>
+</html>
