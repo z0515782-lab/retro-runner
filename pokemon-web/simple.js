@@ -11,8 +11,8 @@
 
 // User configurable.
 const ROM_FILENAME = 'pokemon_yellow.gbc';
-const ENABLE_FAST_FORWARD = true;
-const ENABLE_REWIND = true;
+const ENABLE_FAST_FORWARD = false;
+const ENABLE_REWIND = false;
 const ENABLE_PAUSE = false;
 const ENABLE_SWITCH_PALETTES = true;
 const OSGP_DEADZONE = 0.1;    // On screen gamepad deadzone range
