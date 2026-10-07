@@ -33,7 +33,7 @@
       text-align: center;
       min-height: 28px;
     }
-    canvas.hc { -webkit-filter: grayscale(1) contrast(1.8); filter: grayscale(1) contrast(1.8); }
+    canvas#view.hc { -webkit-filter: grayscale(1) contrast(1.8); filter: grayscale(1) contrast(1.8); }
     #hc {
       position: fixed; top: 6px; left: 6px; z-index: 5;
       font-size: 13px; font-weight: bold;
@@ -42,13 +42,13 @@
     }
     #hc.on { background: #000; color: #fff; }
     #picker { display: none; font-size: 16px; padding: 6px; touch-action: auto; }
-    canvas#mainCanvas {
-      image-rendering: -webkit-optimize-contrast;
-      image-rendering: -moz-crisp-edges;
-      image-rendering: crisp-edges;
+    /* The emulator draws into this 160x144 canvas; we never show it directly. */
+    canvas#mainCanvas { display: none; }
+    /* The visible canvas: we upscale into it ourselves with whole device pixels. */
+    canvas#view {
       image-rendering: pixelated;
-      width: 320px;
-      height: 288px;
+      width: 328px;
+      height: 296px;
       border: 4px solid #000;
       background: #fff;
       display: block;
@@ -111,6 +111,7 @@
   <div id="status">Loading...</div>
   <input type="file" id="picker" accept=".gb,.gbc">
   <canvas id="mainCanvas" width="160" height="144"></canvas>
+  <canvas id="view" width="320" height="288"></canvas>
 
   <div id="controls-wrap"><div id="touch-controls">
     <div class="dpad">
@@ -177,9 +178,19 @@
   <script>
     var statusText = document.getElementById("status");
     var picker = document.getElementById("picker");
-    var canvas = document.getElementById("mainCanvas");
+    var canvas = document.getElementById("mainCanvas");   // emulator's own 160x144 canvas (hidden)
+    var view = document.getElementById("view");           // what you actually see
+    var vctx = view.getContext("2d");
     var gb = null;
     var runTimer = null;
+
+    // Copy the 160x144 frame into the visible canvas, scaled with NO smoothing.
+    function blit() {
+      vctx.imageSmoothingEnabled = false;
+      vctx.webkitImageSmoothingEnabled = false;
+      vctx.mozImageSmoothingEnabled = false;
+      vctx.drawImage(canvas, 0, 0, 160, 144, 0, 0, view.width, view.height);
+    }
 
     function bufToBinString(buf) {
       var bytes = new Uint8Array(buf);
@@ -217,7 +228,7 @@
       gb.firstIteration = new Date().getTime();
       gb.iterations = 0;
       runTimer = setInterval(function () {
-        if (!document.hidden && gb) gb.run();
+        if (!document.hidden && gb) { gb.run(); blit(); }
       }, LOOP_MS);
 
       statusText.style.display = "none";
@@ -257,7 +268,7 @@
     (function () {
       var btn = document.getElementById("hc");
       function set(on) {
-        canvas.className = on ? "hc" : "";
+        view.className = on ? "hc" : "";
         btn.className = on ? "on" : "";
         try { localStorage.setItem("hc", on ? "1" : "0"); } catch (e) {}
       }
@@ -270,7 +281,7 @@
         var now = new Date().getTime();
         if (now - lock < 400) return; // ignore touch + click double-fire
         lock = now;
-        set(canvas.className !== "hc");
+        set(view.className !== "hc");
       }
       btn.addEventListener("touchend", toggle, { passive: false });
       btn.addEventListener("click", toggle);
@@ -288,10 +299,16 @@
       var statusH = statusText.style.display === "none" ? 0 : statusText.offsetHeight;
       var pickerH = picker.style.display === "block" ? picker.offsetHeight : 0;
       var availH = h - wrapH - statusH - pickerH - 20;
-      var s = Math.floor(Math.min((w - 24) / 160, (availH - 8) / 144));
+      // Pick a whole number of DEVICE pixels per Game Boy pixel, so every pixel maps exactly
+      // (on a Retina screen, devicePixelRatio is 2, so 1 CSS px = 2 device px).
+      var dpr = window.devicePixelRatio || 1;
+      var s = Math.floor(Math.min(((w - 24) * dpr) / 160, ((availH - 8) * dpr) / 144));
       if (s < 1) s = 1;
-      canvas.style.width = (160 * s + 8) + "px";   // +8 for the 4px border each side
-      canvas.style.height = (144 * s + 8) + "px";
+      view.width = 160 * s;     // real bitmap size in device pixels (resets the context)
+      view.height = 144 * s;
+      view.style.width = (160 * s / dpr + 8) + "px";    // +8 for the 4px border each side
+      view.style.height = (144 * s / dpr + 8) + "px";
+      blit();
     }
     window.addEventListener("resize", layout);
     window.addEventListener("orientationchange", layout);
