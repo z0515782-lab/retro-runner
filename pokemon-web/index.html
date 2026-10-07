@@ -144,6 +144,10 @@
     // Globals the core expects
     window.cout = function () {};
     window.pause = function () { window.gbPaused = true; };
+    // The core calls these as bare globals while setting up the LCD. The canvas is
+    // already 160x144 (CSS scales it), so no-ops are enough.
+    window.initNewCanvas = function () {};
+    window.initNewCanvasSize = function () {};
     window.XAudioServer = function () {
       return { writeAudio: function(){}, changeVolume: function(){}, executeCallback: function(){} };
     };
