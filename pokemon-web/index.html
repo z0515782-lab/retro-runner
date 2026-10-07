@@ -33,6 +33,14 @@
       text-align: center;
       min-height: 28px;
     }
+    canvas.hc { -webkit-filter: grayscale(1) contrast(1.8); filter: grayscale(1) contrast(1.8); }
+    #hc {
+      position: fixed; top: 6px; left: 6px; z-index: 5;
+      font-size: 13px; font-weight: bold;
+      border: 2px solid #000; border-radius: 8px;
+      padding: 6px 10px; background: #fff;
+    }
+    #hc.on { background: #000; color: #fff; }
     #picker { display: none; font-size: 16px; padding: 6px; touch-action: auto; }
     canvas#mainCanvas {
       image-rendering: -webkit-optimize-contrast;
@@ -99,6 +107,7 @@
 </head>
 <body>
 
+  <div id="hc">B&amp;W</div>
   <div id="status">Loading...</div>
   <input type="file" id="picker" accept=".gb,.gbc">
   <canvas id="mainCanvas" width="160" height="144"></canvas>
@@ -243,6 +252,29 @@
         // Opening index.html straight from disk (file://) blocks fetch(); fall back to a picker.
         showPicker("Couldn't auto-load ROM (" + err.message + ")");
       });
+
+    // B&W / high-contrast toggle (remembered; also ?hc=1 in the URL turns it on)
+    (function () {
+      var btn = document.getElementById("hc");
+      function set(on) {
+        canvas.className = on ? "hc" : "";
+        btn.className = on ? "on" : "";
+        try { localStorage.setItem("hc", on ? "1" : "0"); } catch (e) {}
+      }
+      var start = /[?&]hc=1/.test(location.search);
+      try { if (localStorage.getItem("hc") === "1") start = true; } catch (e) {}
+      set(start);
+      var lock = 0;
+      function toggle(e) {
+        e.preventDefault();
+        var now = new Date().getTime();
+        if (now - lock < 400) return; // ignore touch + click double-fire
+        lock = now;
+        set(canvas.className !== "hc");
+      }
+      btn.addEventListener("touchend", toggle, { passive: false });
+      btn.addEventListener("click", toggle);
+    })();
 
     // Scale the screen and the buttons to fit the display (integer scale keeps pixels crisp)
     function layout() {
