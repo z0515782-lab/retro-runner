@@ -157,13 +157,17 @@
   </div>
 
   <script>
-    // 1. Mock legacy variables so it never crashes
+    // 1. Define settings (Sound completely off for Kindle performance)
+    var settings = [false, true, false, true, true, false, false, false, false, false, false, false, false, false, false];
+    window.settings = settings;
+
+    // 2. Mock legacy variables so it never crashes
     function cout(m) {}
     cout.value = "";
     cout.appendText = function() {};
     window.cout = cout;
 
-    // 2. Completely bypass Audio so Kindle browser never crashes
+    // 3. Completely bypass Audio so Kindle browser never crashes
     window.XAudioServer = function() {
       return {
         writeAudio: function() {},
@@ -173,7 +177,7 @@
     };
   </script>
 
-  <!-- Load pure JavaScript emulator directly from CDN (ZERO extra folders needed) -->
+  <!-- Load pure JavaScript emulator directly from CDN -->
   <script src="https://cdn.jsdelivr.net/gh/taisel/GameBoy-Online/js/other/resampler.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/taisel/GameBoy-Online/js/GameBoyCore.js"></script>
 
@@ -200,7 +204,7 @@
         
         // Launch Pure JavaScript GameBoy instance
         gb = new GameBoyCore(canvas, bin);
-        gb.soundMasterEnabled = false; // Silence for Kindle performance
+        gb.soundMasterEnabled = false;
         gb.start();
 
         statusText.style.display = "none";
