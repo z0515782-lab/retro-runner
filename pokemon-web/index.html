@@ -10,7 +10,6 @@
       -webkit-touch-callout: none;
       -webkit-user-select: none;
       user-select: none;
-      /* CRITICAL FOR KINDLE: stops browser gesture intercepting taps */
       touch-action: none;
     }
     html, body {
@@ -33,10 +32,8 @@
       font-weight: bold;
       padding: 4px;
       text-align: center;
-      word-break: break-all;
     }
 
-    /* Game Boy screen scaled nicely for Kindle Scribe */
     canvas#mainCanvas {
       image-rendering: -webkit-optimize-contrast;
       image-rendering: pixelated;
@@ -46,10 +43,9 @@
       border: 4px solid #000;
       background: #fff;
       display: block;
-      margin: 0 auto;
+      margin: 10px auto 0 auto;
     }
 
-    /* Kindle Controller */
     #touch-controls {
       width: 100%;
       max-width: 600px;
@@ -59,7 +55,6 @@
       padding: 10px 20px 20px 20px;
     }
 
-    /* D-PAD */
     .dpad {
       position: relative;
       width: 180px;
@@ -83,7 +78,6 @@
     #btn-left  { top: 61px; left: 0; }
     #btn-right { top: 61px; right: 0; }
 
-    /* ACTION BUTTONS (A, B) */
     .action-group {
       display: flex;
       flex-direction: column;
@@ -110,7 +104,6 @@
     }
     .round-btn:active { background: #000; color: #fff; }
 
-    /* START / SELECT */
     .menu-btns {
       display: flex;
       gap: 15px;
@@ -134,7 +127,6 @@
 <body>
 
   <div id="status">Loading...</div>
-
   <canvas id="mainCanvas" width="160" height="144"></canvas>
 
   <div id="touch-controls">
@@ -158,55 +150,47 @@
   </div>
 
   <script>
-    // Visual error logging on screen (since Kindle has no F12 console)
-    window.onerror = function(msg, url, line) {
-      document.getElementById("status").style.display = "block";
-      document.getElementById("status").innerText = "Err: " + msg + " (" + line + ")";
-      return false;
-    };
-
-    // Low-overhead settings for GameBoy-Online
-    // [sound, prioritizeSpeed, showFPS, skipFrames, ...]
-    var settings = [
-      false, // 0: Sound off
-      true,  // 1: Speed priority
-      false, // 2: No FPS counter
-      true,  // 3: Frame-skipping ON (mandatory for Kindle!)
-      true,  // 4: Auto frame-skip
-      false, // 5: Sound channels
-      false, false, false, false, false, false, false, false, false
+    // GameBoy emulator settings
+    window.settings = [
+      false, // Sound off
+      true,  // Speed prioritized
+      false, // FPS disabled
+      true,  // Frame skip enabled
+      true,  // Auto frame-skipping
+      false, false, false, false, false, false, false, false, false, false
     ];
-    window.settings = settings;
 
-    // Stubs for legacy GameBoy-Online logging
     window.cout = function() {};
     window.cout.value = "";
     window.cout.appendText = function() {};
 
-    // Kill audio so WebAudio doesn't stall Kindle
     window.XAudioServer = function() {
       return { writeAudio: function(){}, changeVolume: function(){}, executeCallback: function(){} };
     };
 
-    // Missing canvas initializer fix
+    // Prepare canvas context & image buffer that GameBoyCore demands
+    const canvas = document.getElementById("mainCanvas");
+    const ctx = canvas.getContext("2d");
+    let canvasImgData = ctx.createImageData(160, 144);
+
+    // Provide the required canvas initializer for GameBoyCore
     window.initNewCanvas = function() {
-      return document.getElementById("mainCanvas");
+      return canvas;
     };
   </script>
 
-  <!-- Load pure JS emulator -->
+  <!-- Load emulator core -->
   <script src="https://cdn.jsdelivr.net/gh/taisel/GameBoy-Online/js/other/resampler.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/taisel/GameBoy-Online/js/GameBoyCore.js"></script>
 
   <script>
     const statusText = document.getElementById("status");
-    const canvas = document.getElementById("mainCanvas");
     let gb = null;
 
     fetch("pokemon_yellow.gbc")
       .then(resp => {
-        if (!resp.ok) throw new Error("ROM not found: pokemon_yellow.gbc");
-        statusText.innerText = "Decompressing ROM...";
+        if (!resp.ok) throw new Error("Could not load pokemon_yellow.gbc (" + resp.status + ")");
+        statusText.innerText = "Processing ROM...";
         return resp.arrayBuffer();
       })
       .then(buf => {
@@ -217,35 +201,40 @@
           bin += String.fromCharCode(bytes[i]);
         }
 
-        statusText.innerText = "Starting engine...";
+        statusText.innerText = "Initializing GameBoy Core...";
 
+        // GameBoyCore expects: (canvasElement, ROMString)
         gb = new GameBoyCore(canvas, bin);
         gb.soundMasterEnabled = false;
-        
-        // Force frame skip interval to reduce e-ink paint pressure
-        gb.emulatorIntervalInterval = 20; 
 
+        // Hook up frame renderer explicitly
+        gb.canvas = canvas;
+        gb.context = ctx;
+        
+        // Start emulation execution
         gb.start();
+
+        // Game Boy title screen starts with a pure white fade for the first ~0.5–1s!
         statusText.style.display = "none";
       })
       .catch(err => {
-        statusText.innerText = "Load failed: " + err.message;
+        statusText.innerText = "Error: " + err.message;
+        console.error(err);
       });
 
-    // Touch controls with preventDefault to eliminate Kindle tap-delay
+    // Touch & Mouse bindings
+    // 0: Right, 1: Left, 2: Up, 3: Down, 4: A, 5: B, 6: Select, 7: Start
     function bindTouch(id, keyIndex) {
       const el = document.getElementById(id);
       if (!el) return;
 
       const press = (e) => {
         e.preventDefault();
-        e.stopPropagation();
         if (gb) gb.JoyPadEvent(keyIndex, true);
       };
 
       const release = (e) => {
         e.preventDefault();
-        e.stopPropagation();
         if (gb) gb.JoyPadEvent(keyIndex, false);
       };
 
@@ -263,6 +252,31 @@
     bindTouch("btn-b", 5);
     bindTouch("btn-select", 6);
     bindTouch("btn-start", 7);
+
+    // Keyboard support for testing on Mac/PC (Arrow keys + Z/X + Enter/Shift)
+    window.addEventListener("keydown", (e) => {
+      if (!gb) return;
+      if (e.key === "ArrowRight") gb.JoyPadEvent(0, true);
+      if (e.key === "ArrowLeft")  gb.JoyPadEvent(1, true);
+      if (e.key === "ArrowUp")    gb.JoyPadEvent(2, true);
+      if (e.key === "ArrowDown")  gb.JoyPadEvent(3, true);
+      if (e.key === "z" || e.key === "Z") gb.JoyPadEvent(4, true); // A
+      if (e.key === "x" || e.key === "X") gb.JoyPadEvent(5, true); // B
+      if (e.key === "Shift")      gb.JoyPadEvent(6, true);          // Select
+      if (e.key === "Enter")      gb.JoyPadEvent(7, true);          // Start
+    });
+
+    window.addEventListener("keyup", (e) => {
+      if (!gb) return;
+      if (e.key === "ArrowRight") gb.JoyPadEvent(0, false);
+      if (e.key === "ArrowLeft")  gb.JoyPadEvent(1, false);
+      if (e.key === "ArrowUp")    gb.JoyPadEvent(2, false);
+      if (e.key === "ArrowDown")  gb.JoyPadEvent(3, false);
+      if (e.key === "z" || e.key === "Z") gb.JoyPadEvent(4, false);
+      if (e.key === "x" || e.key === "X") gb.JoyPadEvent(5, false);
+      if (e.key === "Shift")      gb.JoyPadEvent(6, false);
+      if (e.key === "Enter")      gb.JoyPadEvent(7, false);
+    });
   </script>
 </body>
 </html>
