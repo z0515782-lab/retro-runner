@@ -24,7 +24,7 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: space-between;
+      justify-content: flex-start;
     }
     #status {
       font-size: 16px;
@@ -36,8 +36,9 @@
     #picker { display: none; font-size: 16px; padding: 6px; touch-action: auto; }
     canvas#mainCanvas {
       image-rendering: -webkit-optimize-contrast;
-      image-rendering: pixelated;
+      image-rendering: -moz-crisp-edges;
       image-rendering: crisp-edges;
+      image-rendering: pixelated;
       width: 320px;
       height: 288px;
       border: 4px solid #000;
@@ -45,9 +46,17 @@
       display: block;
       margin: 10px auto 0 auto;
     }
-    #touch-controls {
+    #controls-wrap {
       width: 100%;
-      max-width: 600px;
+      margin-top: auto;
+      display: flex;
+      justify-content: center;
+      overflow: visible;
+    }
+    #touch-controls {
+      width: 560px;
+      flex-shrink: 0;
+      transform-origin: top center;
       height: 270px;
       display: flex;
       justify-content: space-between;
@@ -94,7 +103,7 @@
   <input type="file" id="picker" accept=".gb,.gbc">
   <canvas id="mainCanvas" width="160" height="144"></canvas>
 
-  <div id="touch-controls">
+  <div id="controls-wrap"><div id="touch-controls">
     <div class="dpad">
       <div class="dpad-btn" id="btn-up">▲</div>
       <div class="dpad-btn" id="btn-left">◀</div>
@@ -111,7 +120,7 @@
         <div class="pill-btn" id="btn-start">START</div>
       </div>
     </div>
-  </div>
+  </div></div>
 
   <script>
     // Show any JS error on screen so a "white screen" is never silent
@@ -187,6 +196,12 @@
       gb.openMBC = function () { return []; };
       gb.openRTC = function () { return []; };
       gb.start();
+      try {
+        var c2d = canvas.getContext("2d");
+        c2d.imageSmoothingEnabled = false;
+        c2d.webkitImageSmoothingEnabled = false;
+        c2d.mozImageSmoothingEnabled = false;
+      } catch (e) {}
 
       // THE IMPORTANT PART: start() only initializes. Something must call gb.run() repeatedly.
       gb.stopEmulator &= 1;
@@ -198,11 +213,13 @@
 
       statusText.style.display = "none";
       picker.style.display = "none";
+      layout();
     }
 
     function showPicker(reason) {
       statusText.innerText = reason + " — choose the ROM file:";
       picker.style.display = "block";
+      layout();
     }
 
     picker.addEventListener("change", function () {
@@ -226,6 +243,27 @@
         // Opening index.html straight from disk (file://) blocks fetch(); fall back to a picker.
         showPicker("Couldn't auto-load ROM (" + err.message + ")");
       });
+
+    // Scale the screen and the buttons to fit the display (integer scale keeps pixels crisp)
+    function layout() {
+      var w = window.innerWidth, h = window.innerHeight;
+      var wrap = document.getElementById("controls-wrap");
+      var ctl = document.getElementById("touch-controls");
+      var cs = Math.min(w / 580, (h * 0.38) / 270, 3);
+      ctl.style.transform = "scale(" + cs + ")";
+      var wrapH = Math.round(270 * cs);
+      wrap.style.height = wrapH + "px";
+      var statusH = statusText.style.display === "none" ? 0 : statusText.offsetHeight;
+      var pickerH = picker.style.display === "block" ? picker.offsetHeight : 0;
+      var availH = h - wrapH - statusH - pickerH - 20;
+      var s = Math.floor(Math.min((w - 24) / 160, (availH - 8) / 144));
+      if (s < 1) s = 1;
+      canvas.style.width = (160 * s + 8) + "px";   // +8 for the 4px border each side
+      canvas.style.height = (144 * s + 8) + "px";
+    }
+    window.addEventListener("resize", layout);
+    window.addEventListener("orientationchange", layout);
+    layout();
 
     // Buttons. 0: Right, 1: Left, 2: Up, 3: Down, 4: A, 5: B, 6: Select, 7: Start
     function bindTouch(id, keyIndex) {
