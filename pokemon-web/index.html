@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Pokémon Yellow - Kindle Edition</title>
+  <title>Pokémon Yellow - Kindle Scribe</title>
   <style>
     * {
       box-sizing: border-box;
@@ -27,20 +27,20 @@
     }
 
     #status {
-      font-size: 16px;
+      font-size: 18px;
       font-weight: bold;
-      padding: 4px;
+      padding: 6px;
       text-align: center;
     }
 
-    /* Game Boy Screen optimized for Kindle E-ink */
+    /* Crisp Game Boy screen for E-ink */
     canvas#mainCanvas {
       image-rendering: -webkit-optimize-contrast;
       image-rendering: pixelated;
       image-rendering: crisp-edges;
       width: 320px;
       height: 288px;
-      border: 3px solid #000;
+      border: 4px solid #000;
       background: #fff;
       display: block;
       margin: 0 auto;
@@ -49,11 +49,11 @@
     /* Kindle Touch Controller */
     #touch-controls {
       width: 100%;
-      max-width: 600px;
-      height: 260px;
+      max-width: 650px;
+      height: 280px;
       display: flex;
       justify-content: space-between;
-      padding: 10px 20px 20px 20px;
+      padding: 10px 20px 25px 20px;
     }
 
     /* D-PAD */
@@ -64,21 +64,21 @@
     }
     .dpad-btn {
       position: absolute;
-      width: 55px;
-      height: 55px;
+      width: 58px;
+      height: 58px;
       background: #fff;
       border: 3px solid #000;
-      font-size: 26px;
+      font-size: 28px;
       font-weight: bold;
       display: flex;
       align-items: center;
       justify-content: center;
     }
     .dpad-btn:active { background: #000; color: #fff; }
-    #btn-up    { top: 0; left: 60px; }
-    #btn-down  { bottom: 0; left: 60px; }
-    #btn-left  { top: 60px; left: 0; }
-    #btn-right { top: 60px; right: 0; }
+    #btn-up    { top: 0; left: 61px; }
+    #btn-down  { bottom: 0; left: 61px; }
+    #btn-left  { top: 61px; left: 0; }
+    #btn-right { top: 61px; right: 0; }
 
     /* ACTION BUTTONS (A, B) */
     .action-group {
@@ -86,20 +86,20 @@
       flex-direction: column;
       justify-content: space-between;
       align-items: center;
-      width: 180px;
+      width: 190px;
     }
     .ab-btns {
       display: flex;
       gap: 20px;
-      margin-top: 20px;
+      margin-top: 15px;
     }
     .round-btn {
-      width: 70px;
-      height: 70px;
+      width: 75px;
+      height: 75px;
       border-radius: 50%;
       background: #fff;
       border: 3px solid #000;
-      font-size: 26px;
+      font-size: 28px;
       font-weight: bold;
       display: flex;
       align-items: center;
@@ -114,8 +114,8 @@
       margin-bottom: 10px;
     }
     .pill-btn {
-      width: 80px;
-      height: 38px;
+      width: 85px;
+      height: 40px;
       background: #fff;
       border: 3px solid #000;
       border-radius: 12px;
@@ -130,7 +130,7 @@
 </head>
 <body>
 
-  <div id="status">Loading Pure-JS Core...</div>
+  <div id="status">Loading pure JavaScript Game Boy engine...</div>
 
   <canvas id="mainCanvas" width="160" height="144"></canvas>
 
@@ -156,33 +156,37 @@
     </div>
   </div>
 
-  <!-- Legacy mock so it never throws -->
   <script>
+    // 1. Mock legacy variables so it never crashes
     function cout(m) {}
     cout.value = "";
     cout.appendText = function() {};
     window.cout = cout;
 
-    // Completely disable Audio for Kindle
-    window.settings = [false, true, false, true, true, true, false, false, false, false, false, false, false, false, false];
-    window.windowSettings = window.settings;
+    // 2. Completely bypass Audio so Kindle browser never crashes
+    window.XAudioServer = function() {
+      return {
+        writeAudio: function() {},
+        changeVolume: function() {},
+        executeCallback: function() {}
+      };
+    };
   </script>
 
-  <!-- Load Pure JavaScript Game Boy Engine -->
-  <script src="core/js/other/resampler.js"></script>
-  <script src="core/js/other/XAudioServer.js"></script>
-  <script src="core/js/GameBoyCore.js"></script>
-  <script src="core/js/GameBoyIO.js"></script>
+  <!-- Load pure JavaScript emulator directly from CDN (ZERO extra folders needed) -->
+  <script src="https://cdn.jsdelivr.net/gh/taisel/GameBoy-Online/js/other/resampler.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/taisel/GameBoy-Online/js/GameBoyCore.js"></script>
 
   <script>
     const statusText = document.getElementById("status");
     const canvas = document.getElementById("mainCanvas");
+    let gb = null;
 
-    // Fetch and boot Yellow
+    // Fetch Yellow ROM and boot directly in pure JavaScript
     fetch("pokemon_yellow.gbc")
       .then(resp => {
-        if (!resp.ok) throw new Error("ROM not found!");
-        statusText.innerText = "Extracting ROM...";
+        if (!resp.ok) throw new Error("Could not find pokemon_yellow.gbc");
+        statusText.innerText = "Reading Pokémon Yellow...";
         return resp.arrayBuffer();
       })
       .then(buf => {
@@ -192,13 +196,12 @@
           bin += String.fromCharCode(bytes[i]);
         }
 
-        statusText.innerText = "Booting Pokémon Yellow...";
-        start(canvas, bin);
-
-        // Turn off sound completely to save Kindle CPU
-        if (window.gameboy) {
-          window.gameboy.soundMasterEnabled = false;
-        }
+        statusText.innerText = "Starting Game...";
+        
+        // Launch Pure JavaScript GameBoy instance
+        gb = new GameBoyCore(canvas, bin);
+        gb.soundMasterEnabled = false; // Silence for Kindle performance
+        gb.start();
 
         statusText.style.display = "none";
       })
@@ -207,17 +210,19 @@
       });
 
     // Touch Event Hookups for Kindle Scribe
+    // GameBoyCore Joypad mapping:
+    // 0: Right, 1: Left, 2: Up, 3: Down, 4: A, 5: B, 6: Select, 7: Start
     function bindTouch(id, keyIndex) {
       const el = document.getElementById(id);
       if (!el) return;
 
       const press = (e) => {
         e.preventDefault();
-        if (window.GameBoyKeyDown) window.GameBoyKeyDown(keyIndex);
+        if (gb) gb.JoyPadEvent(keyIndex, true);
       };
       const release = (e) => {
         e.preventDefault();
-        if (window.GameBoyKeyUp) window.GameBoyKeyUp(keyIndex);
+        if (gb) gb.JoyPadEvent(keyIndex, false);
       };
 
       el.addEventListener("touchstart", press, {passive: false});
@@ -226,8 +231,6 @@
       el.addEventListener("mouseup", release);
     }
 
-    // Key mappings in GameBoyIO:
-    // 0: Right, 1: Left, 2: Up, 3: Down, 4: A, 5: B, 6: Select, 7: Start
     bindTouch("btn-right", 0);
     bindTouch("btn-left", 1);
     bindTouch("btn-up", 2);
