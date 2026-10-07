@@ -17,8 +17,8 @@
       color: #000000;
       margin: 0;
       padding: 0;
-      width: 100vw;
-      height: 100vh;
+      width: 100%;
+      height: 100%;
       overflow: hidden;
       font-family: sans-serif;
       display: flex;
@@ -26,14 +26,14 @@
       align-items: center;
       justify-content: space-between;
     }
-
     #status {
       font-size: 16px;
       font-weight: bold;
       padding: 4px;
       text-align: center;
+      min-height: 28px;
     }
-
+    #picker { display: none; font-size: 16px; padding: 6px; touch-action: auto; }
     canvas#mainCanvas {
       image-rendering: -webkit-optimize-contrast;
       image-rendering: pixelated;
@@ -45,7 +45,6 @@
       display: block;
       margin: 10px auto 0 auto;
     }
-
     #touch-controls {
       width: 100%;
       max-width: 600px;
@@ -54,79 +53,45 @@
       justify-content: space-between;
       padding: 10px 20px 20px 20px;
     }
-
-    .dpad {
-      position: relative;
-      width: 180px;
-      height: 180px;
-    }
+    .dpad { position: relative; width: 180px; height: 180px; }
     .dpad-btn {
       position: absolute;
-      width: 58px;
-      height: 58px;
-      background: #ffffff;
-      border: 3px solid #000000;
-      font-size: 26px;
-      font-weight: bold;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      width: 58px; height: 58px;
+      background: #fff;
+      border: 3px solid #000;
+      font-size: 26px; font-weight: bold;
+      display: flex; align-items: center; justify-content: center;
     }
-    .dpad-btn:active { background: #000; color: #fff; }
+    .dpad-btn.down, .round-btn.down, .pill-btn.down { background: #000; color: #fff; }
     #btn-up    { top: 0; left: 61px; }
     #btn-down  { bottom: 0; left: 61px; }
     #btn-left  { top: 61px; left: 0; }
     #btn-right { top: 61px; right: 0; }
-
     .action-group {
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      align-items: center;
+      display: flex; flex-direction: column;
+      justify-content: space-between; align-items: center;
       width: 190px;
     }
-    .ab-btns {
-      display: flex;
-      gap: 20px;
-      margin-top: 10px;
-    }
+    .ab-btns { display: flex; gap: 20px; margin-top: 10px; }
     .round-btn {
-      width: 72px;
-      height: 72px;
-      border-radius: 50%;
-      background: #ffffff;
-      border: 3px solid #000000;
-      font-size: 26px;
-      font-weight: bold;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      width: 72px; height: 72px; border-radius: 50%;
+      background: #fff; border: 3px solid #000;
+      font-size: 26px; font-weight: bold;
+      display: flex; align-items: center; justify-content: center;
     }
-    .round-btn:active { background: #000; color: #fff; }
-
-    .menu-btns {
-      display: flex;
-      gap: 15px;
-      margin-bottom: 10px;
-    }
+    .menu-btns { display: flex; gap: 15px; margin-bottom: 10px; }
     .pill-btn {
-      width: 82px;
-      height: 38px;
-      background: #ffffff;
-      border: 3px solid #000000;
-      border-radius: 10px;
-      font-size: 13px;
-      font-weight: bold;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      width: 82px; height: 38px;
+      background: #fff; border: 3px solid #000; border-radius: 10px;
+      font-size: 13px; font-weight: bold;
+      display: flex; align-items: center; justify-content: center;
     }
-    .pill-btn:active { background: #000; color: #fff; }
   </style>
 </head>
 <body>
 
   <div id="status">Loading...</div>
+  <input type="file" id="picker" accept=".gb,.gbc">
   <canvas id="mainCanvas" width="160" height="144"></canvas>
 
   <div id="touch-controls">
@@ -136,7 +101,6 @@
       <div class="dpad-btn" id="btn-right">▶</div>
       <div class="dpad-btn" id="btn-down">▼</div>
     </div>
-
     <div class="action-group">
       <div class="ab-btns">
         <div class="round-btn" id="btn-b">B</div>
@@ -150,100 +114,128 @@
   </div>
 
   <script>
-    // GameBoy emulator settings
-    window.settings = [
-      false, // Sound off
-      true,  // Speed prioritized
-      false, // FPS disabled
-      true,  // Frame skip enabled
-      true,  // Auto frame-skipping
-      false, false, false, false, false, false, false, false, false, false
-    ];
-
-    window.cout = function() {};
-    window.cout.value = "";
-    window.cout.appendText = function() {};
-
-    window.XAudioServer = function() {
-      return { writeAudio: function(){}, changeVolume: function(){}, executeCallback: function(){} };
+    // Show any JS error on screen so a "white screen" is never silent
+    window.onerror = function (msg, src, line) {
+      var s = document.getElementById("status");
+      s.style.display = "block";
+      s.innerText = "JS error: " + msg + " (line " + line + ")";
     };
 
-    // Prepare canvas context & image buffer that GameBoyCore demands
-    const canvas = document.getElementById("mainCanvas");
-    const ctx = canvas.getContext("2d");
-    let canvasImgData = ctx.createImageData(160, 144);
+    // GameBoyCore reads these as globals. The ORDER matters (indexes are fixed by the core).
+    var LOOP_MS = 16;
+    window.settings = [
+      false,  // 0  sound on (off)
+      true,   // 1  boot with boot ROM first
+      false,  // 2  give priority to GameBoy mode
+      1,      // 3  volume
+      false,  // 4  colorize GB mode
+      false,  // 5  disallow typed arrays
+      LOOP_MS,// 6  emulator loop interval (ms)  <-- must be a number
+      10,     // 7  audio buffer min span
+      20,     // 8  audio buffer max span
+      false,  // 9  MBC1 override
+      false,  // 10 always allow RAM banks
+      false,  // 11 use GB boot ROM instead of GBC boot ROM
+      false,  // 12 scale canvas in JS
+      false,  // 13 image smoothing
+      [true, true, true, true] // 14 sound channel enables
+    ];
 
-    // Provide the required canvas initializer for GameBoyCore
-    window.initNewCanvas = function() {
-      return canvas;
+    // Globals the core expects
+    window.cout = function () {};
+    window.pause = function () { window.gbPaused = true; };
+    window.XAudioServer = function () {
+      return { writeAudio: function(){}, changeVolume: function(){}, executeCallback: function(){} };
     };
   </script>
 
-  <!-- Load emulator core -->
-  <script src="https://cdn.jsdelivr.net/gh/taisel/GameBoy-Online/js/other/resampler.js"></script>
+  <!-- Emulator core (sound is off, so the resampler/audio files aren't needed) -->
   <script src="https://cdn.jsdelivr.net/gh/taisel/GameBoy-Online/js/GameBoyCore.js"></script>
 
   <script>
-    const statusText = document.getElementById("status");
-    let gb = null;
+    var statusText = document.getElementById("status");
+    var picker = document.getElementById("picker");
+    var canvas = document.getElementById("mainCanvas");
+    var gb = null;
+    var runTimer = null;
+
+    function bufToBinString(buf) {
+      var bytes = new Uint8Array(buf);
+      var out = "";
+      var CHUNK = 0x8000;
+      for (var i = 0; i < bytes.length; i += CHUNK) {
+        out += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+      }
+      return out;
+    }
+
+    function startGame(buf) {
+      if (typeof GameBoyCore === "undefined") {
+        throw new Error("GameBoyCore.js did not load (check internet / CDN)");
+      }
+      statusText.innerText = "Starting emulator...";
+      var rom = bufToBinString(buf);
+
+      if (runTimer) clearInterval(runTimer);
+
+      gb = new GameBoyCore(canvas, rom);
+      // The core calls these for battery saves / RTC; they must exist or start() throws.
+      gb.openMBC = function () { return []; };
+      gb.openRTC = function () { return []; };
+      gb.start();
+
+      // THE IMPORTANT PART: start() only initializes. Something must call gb.run() repeatedly.
+      gb.stopEmulator &= 1;
+      gb.firstIteration = new Date().getTime();
+      gb.iterations = 0;
+      runTimer = setInterval(function () {
+        if (!document.hidden && gb) gb.run();
+      }, LOOP_MS);
+
+      statusText.style.display = "none";
+      picker.style.display = "none";
+    }
+
+    function showPicker(reason) {
+      statusText.innerText = reason + " — choose the ROM file:";
+      picker.style.display = "block";
+    }
+
+    picker.addEventListener("change", function () {
+      var f = picker.files && picker.files[0];
+      if (!f) return;
+      var r = new FileReader();
+      r.onload = function () {
+        try { startGame(r.result); } catch (e) { statusText.innerText = "Error: " + e.message; }
+      };
+      r.readAsArrayBuffer(f);
+    });
 
     fetch("pokemon_yellow.gbc")
-      .then(resp => {
-        if (!resp.ok) throw new Error("Could not load pokemon_yellow.gbc (" + resp.status + ")");
+      .then(function (resp) {
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
         statusText.innerText = "Processing ROM...";
         return resp.arrayBuffer();
       })
-      .then(buf => {
-        let bin = "";
-        let bytes = new Uint8Array(buf);
-        const len = bytes.byteLength;
-        for (let i = 0; i < len; i++) {
-          bin += String.fromCharCode(bytes[i]);
-        }
-
-        statusText.innerText = "Initializing GameBoy Core...";
-
-        // GameBoyCore expects: (canvasElement, ROMString)
-        gb = new GameBoyCore(canvas, bin);
-        gb.soundMasterEnabled = false;
-
-        // Hook up frame renderer explicitly
-        gb.canvas = canvas;
-        gb.context = ctx;
-        
-        // Start emulation execution
-        gb.start();
-
-        // Game Boy title screen starts with a pure white fade for the first ~0.5–1s!
-        statusText.style.display = "none";
-      })
-      .catch(err => {
-        statusText.innerText = "Error: " + err.message;
-        console.error(err);
+      .then(function (buf) { startGame(buf); })
+      .catch(function (err) {
+        // Opening index.html straight from disk (file://) blocks fetch(); fall back to a picker.
+        showPicker("Couldn't auto-load ROM (" + err.message + ")");
       });
 
-    // Touch & Mouse bindings
-    // 0: Right, 1: Left, 2: Up, 3: Down, 4: A, 5: B, 6: Select, 7: Start
+    // Buttons. 0: Right, 1: Left, 2: Up, 3: Down, 4: A, 5: B, 6: Select, 7: Start
     function bindTouch(id, keyIndex) {
-      const el = document.getElementById(id);
+      var el = document.getElementById(id);
       if (!el) return;
-
-      const press = (e) => {
-        e.preventDefault();
-        if (gb) gb.JoyPadEvent(keyIndex, true);
-      };
-
-      const release = (e) => {
-        e.preventDefault();
-        if (gb) gb.JoyPadEvent(keyIndex, false);
-      };
-
+      function press(e) { e.preventDefault(); el.classList.add("down"); if (gb) gb.JoyPadEvent(keyIndex, true); }
+      function release(e) { e.preventDefault(); el.classList.remove("down"); if (gb) gb.JoyPadEvent(keyIndex, false); }
       el.addEventListener("touchstart", press, { passive: false });
       el.addEventListener("touchend", release, { passive: false });
+      el.addEventListener("touchcancel", release, { passive: false });
       el.addEventListener("mousedown", press);
       el.addEventListener("mouseup", release);
+      el.addEventListener("mouseleave", release);
     }
-
     bindTouch("btn-right", 0);
     bindTouch("btn-left", 1);
     bindTouch("btn-up", 2);
@@ -253,29 +245,13 @@
     bindTouch("btn-select", 6);
     bindTouch("btn-start", 7);
 
-    // Keyboard support for testing on Mac/PC (Arrow keys + Z/X + Enter/Shift)
-    window.addEventListener("keydown", (e) => {
-      if (!gb) return;
-      if (e.key === "ArrowRight") gb.JoyPadEvent(0, true);
-      if (e.key === "ArrowLeft")  gb.JoyPadEvent(1, true);
-      if (e.key === "ArrowUp")    gb.JoyPadEvent(2, true);
-      if (e.key === "ArrowDown")  gb.JoyPadEvent(3, true);
-      if (e.key === "z" || e.key === "Z") gb.JoyPadEvent(4, true); // A
-      if (e.key === "x" || e.key === "X") gb.JoyPadEvent(5, true); // B
-      if (e.key === "Shift")      gb.JoyPadEvent(6, true);          // Select
-      if (e.key === "Enter")      gb.JoyPadEvent(7, true);          // Start
+    // Keyboard (Mac/PC): arrows, Z=A, X=B, Shift=Select, Enter=Start
+    var keyMap = { ArrowRight: 0, ArrowLeft: 1, ArrowUp: 2, ArrowDown: 3, z: 4, Z: 4, x: 5, X: 5, Shift: 6, Enter: 7 };
+    window.addEventListener("keydown", function (e) {
+      if (gb && keyMap.hasOwnProperty(e.key)) { e.preventDefault(); gb.JoyPadEvent(keyMap[e.key], true); }
     });
-
-    window.addEventListener("keyup", (e) => {
-      if (!gb) return;
-      if (e.key === "ArrowRight") gb.JoyPadEvent(0, false);
-      if (e.key === "ArrowLeft")  gb.JoyPadEvent(1, false);
-      if (e.key === "ArrowUp")    gb.JoyPadEvent(2, false);
-      if (e.key === "ArrowDown")  gb.JoyPadEvent(3, false);
-      if (e.key === "z" || e.key === "Z") gb.JoyPadEvent(4, false);
-      if (e.key === "x" || e.key === "X") gb.JoyPadEvent(5, false);
-      if (e.key === "Shift")      gb.JoyPadEvent(6, false);
-      if (e.key === "Enter")      gb.JoyPadEvent(7, false);
+    window.addEventListener("keyup", function (e) {
+      if (gb && keyMap.hasOwnProperty(e.key)) { e.preventDefault(); gb.JoyPadEvent(keyMap[e.key], false); }
     });
   </script>
 </body>
