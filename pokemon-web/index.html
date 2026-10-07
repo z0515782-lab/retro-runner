@@ -33,14 +33,10 @@
       text-align: center;
       min-height: 28px;
     }
-    canvas#view.hc { -webkit-filter: grayscale(1) contrast(1.8); filter: grayscale(1) contrast(1.8); }
-    #hc {
-      position: fixed; top: 6px; left: 6px; z-index: 5;
-      font-size: 13px; font-weight: bold;
-      border: 2px solid #000; border-radius: 8px;
-      padding: 6px 10px; background: #fff;
+    #saved {
+      position: fixed; top: 6px; left: 8px; z-index: 5;
+      font-size: 13px; font-weight: bold; display: none;
     }
-    #hc.on { background: #000; color: #fff; }
     #picker { display: none; font-size: 16px; padding: 6px; touch-action: auto; }
     /* The emulator draws into this 160x144 canvas; we never show it directly. */
     canvas#mainCanvas { display: none; }
@@ -107,7 +103,7 @@
 </head>
 <body>
 
-  <div id="hc">B&amp;W</div>
+  <div id="saved"></div>
   <div id="status">Loading...</div>
   <input type="file" id="picker" accept=".gb,.gbc">
   <canvas id="mainCanvas" width="160" height="144"></canvas>
@@ -141,7 +137,7 @@
     };
 
     // GameBoyCore reads these as globals. The ORDER matters (indexes are fixed by the core).
-    var LOOP_MS = 16;
+    var LOOP_MS = 32;   // emulator tick (ms): fewer wake-ups = less battery/CPU
     window.settings = [
       false,  // 0  sound on (off)
       true,   // 1  boot with boot ROM first
@@ -183,6 +179,9 @@
     var vctx = view.getContext("2d");
     var gb = null;
     var runTimer = null;
+    var saveTimer = null;
+    var DISPLAY_FPS = 12;   // how often the screen is redrawn (game still runs at full speed). Try 8-20.
+    var lastBlit = 0;
 
     // Copy the 160x144 frame into the visible canvas, scaled with NO smoothing.
     function blit() {
@@ -190,6 +189,53 @@
       vctx.webkitImageSmoothingEnabled = false;
       vctx.mozImageSmoothingEnabled = false;
       vctx.drawImage(canvas, 0, 0, 160, 144, 0, 0, view.width, view.height);
+    }
+
+    // ---------- Save data (battery SRAM -> localStorage) ----------
+    var SAVE_PREFIX = "pkmn_sram_";
+    var lastSaved = "";
+    var savedTimer = null;
+    var saveErrorShown = false;
+
+    function bytesToB64(arr) {
+      var s = "", CH = 0x2000;
+      for (var i = 0; i < arr.length; i += CH) {
+        s += String.fromCharCode.apply(null, Array.prototype.slice.call(arr, i, i + CH));
+      }
+      return btoa(s);
+    }
+    function loadSave(name) {
+      try {
+        var b64 = localStorage.getItem(SAVE_PREFIX + name);
+        if (b64) {
+          var bin = atob(b64), out = new Array(bin.length);
+          for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+          lastSaved = b64;
+          return out;
+        }
+      } catch (e) {}
+      return [];
+    }
+    function flashSaved(msg) {
+      var el = document.getElementById("saved");
+      el.innerText = msg;
+      el.style.display = "block";
+      if (savedTimer) clearTimeout(savedTimer);
+      savedTimer = setTimeout(function () { el.style.display = "none"; }, 2000);
+    }
+    function saveNow() {
+      if (!gb) return;
+      try {
+        var st = gb.saveSRAMState();
+        if (!st || !st.length) return;
+        var b64 = bytesToB64(st);
+        if (b64 === lastSaved) return;          // nothing changed since last save
+        localStorage.setItem(SAVE_PREFIX + (gb.name || "rom"), b64);
+        lastSaved = b64;
+        flashSaved("Saved");
+      } catch (e) {
+        if (!saveErrorShown) { saveErrorShown = true; flashSaved("Can't save (storage blocked)"); }
+      }
     }
 
     function bufToBinString(buf) {
@@ -213,9 +259,13 @@
 
       gb = new GameBoyCore(canvas, rom);
       // The core calls these for battery saves / RTC; they must exist or start() throws.
-      gb.openMBC = function () { return []; };
+      gb.openMBC = function (name) { return loadSave(name); };   // load saved game
       gb.openRTC = function () { return []; };
       gb.start();
+      try {   // remember the starting state so only real changes get written
+        var st0 = gb.saveSRAMState();
+        if (st0 && st0.length) lastSaved = bytesToB64(st0);
+      } catch (e) {}
       try {
         var c2d = canvas.getContext("2d");
         c2d.imageSmoothingEnabled = false;
@@ -228,9 +278,14 @@
       gb.firstIteration = new Date().getTime();
       gb.iterations = 0;
       runTimer = setInterval(function () {
-        if (!document.hidden && gb) { gb.run(); blit(); }
+        if (document.hidden || !gb) return;
+        gb.run();
+        var t = new Date().getTime();
+        if (t - lastBlit >= 1000 / DISPLAY_FPS) { lastBlit = t; blit(); }
       }, LOOP_MS);
 
+      if (saveTimer) clearInterval(saveTimer);
+      saveTimer = setInterval(saveNow, 5000);   // autosave every 5s if the game changed its save
       statusText.style.display = "none";
       picker.style.display = "none";
       layout();
@@ -263,29 +318,6 @@
         // Opening index.html straight from disk (file://) blocks fetch(); fall back to a picker.
         showPicker("Couldn't auto-load ROM (" + err.message + ")");
       });
-
-    // B&W / high-contrast toggle (remembered; also ?hc=1 in the URL turns it on)
-    (function () {
-      var btn = document.getElementById("hc");
-      function set(on) {
-        view.className = on ? "hc" : "";
-        btn.className = on ? "on" : "";
-        try { localStorage.setItem("hc", on ? "1" : "0"); } catch (e) {}
-      }
-      var start = /[?&]hc=1/.test(location.search);
-      try { if (localStorage.getItem("hc") === "1") start = true; } catch (e) {}
-      set(start);
-      var lock = 0;
-      function toggle(e) {
-        e.preventDefault();
-        var now = new Date().getTime();
-        if (now - lock < 400) return; // ignore touch + click double-fire
-        lock = now;
-        set(view.className !== "hc");
-      }
-      btn.addEventListener("touchend", toggle, { passive: false });
-      btn.addEventListener("click", toggle);
-    })();
 
     // Scale the screen and the buttons to fit the display (integer scale keeps pixels crisp)
     function layout() {
@@ -335,6 +367,11 @@
     bindTouch("btn-b", 5);
     bindTouch("btn-select", 6);
     bindTouch("btn-start", 7);
+
+    // Save when the page is hidden or closed
+    document.addEventListener("visibilitychange", function () { if (document.hidden) saveNow(); });
+    window.addEventListener("pagehide", saveNow);
+    window.addEventListener("beforeunload", saveNow);
 
     // Keyboard (Mac/PC): arrows, Z=A, X=B, Shift=Select, Enter=Start
     var keyMap = { ArrowRight: 0, ArrowLeft: 1, ArrowUp: 2, ArrowDown: 3, z: 4, Z: 4, x: 5, X: 5, Shift: 6, Enter: 7 };
